@@ -415,6 +415,11 @@ html.js .feat-grid.gr-ready,html.js .steps.gr-ready{animation:grin .22s ease bot
   mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
   mask-composite:exclude;
   animation:travel 5.4s linear infinite;pointer-events:none}
+/* анимация зарегистрированного свойства --a исполняется только в главном
+   потоке: каждый кадр — пересчёт стиля и перерисовка градиента, даже когда
+   блок за экраном. Вне поля зрения кольцо приостанавливает наблюдатель
+   (см. JS): на средней кнопке это убирает постоянную нагрузку на кадр */
+.plan-hot[data-off]::before{animation-play-state:paused}
 @keyframes travel{to{--a:360deg}}
 .plan-hot::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
   background:radial-gradient(420px 240px at 85% -10%,var(--hot-glow),transparent 60%)}
@@ -1001,28 +1006,47 @@ body.doc-lock .page-scroll{overflow:hidden}
 
 (function(){
   /* появление блоков при прокрутке — каждый блок ровно один раз за загрузку.
-     Слушаем окно и контейнер прокрутки (.page-scroll на десктопе) */
+     IntersectionObserver вместо слушателя scroll: слушатель читал
+     getBoundingClientRect каждого блока на каждое событие прокрутки
+     (свыше десяти тысяч принудительных чтений раскладки за страницу) и
+     главный поток не укладывался в кадр — это заметно при автопрокрутке
+     средней кнопкой: она, в отличие от колеса, исполняется в главном
+     потоке и наследует все его подлагивания */
   var els=[].slice.call(document.querySelectorAll('.rv'));
   if(!els.length)return;
-  var ps=document.querySelector('.page-scroll');
-  function update(){
-    els=els.filter(function(el){
-      if(el.getBoundingClientRect().top<window.innerHeight*0.92){
-        el.classList.add('in');
-        return false;
+  function show(el){el.classList.add('in')}
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(items){
+      for(var i=0;i<items.length;i++){
+        if(items[i].isIntersecting){
+          show(items[i].target);
+          io.unobserve(items[i].target);
+        }
       }
-      return true;
-    });
-    if(!els.length){
-      window.removeEventListener('scroll',update);
-      window.removeEventListener('resize',update);
-      if(ps)ps.removeEventListener('scroll',update);
+    },{rootMargin:'0px 0px -8% 0px'}); /* как прежнее условие top < 92% высоты окна */
+    for(var j=0;j<els.length;j++)io.observe(els[j]);
+  }else{
+    /* запасной путь для старых браузеров */
+    var ps=document.querySelector('.page-scroll');
+    function update(){
+      els=els.filter(function(el){
+        if(el.getBoundingClientRect().top<window.innerHeight*0.92){
+          show(el);
+          return false;
+        }
+        return true;
+      });
+      if(!els.length){
+        window.removeEventListener('scroll',update);
+        window.removeEventListener('resize',update);
+        if(ps)ps.removeEventListener('scroll',update);
+      }
     }
+    window.addEventListener('scroll',update,{passive:true});
+    window.addEventListener('resize',update,{passive:true});
+    if(ps)ps.addEventListener('scroll',update,{passive:true});
+    update();
   }
-  window.addEventListener('scroll',update,{passive:true});
-  window.addEventListener('resize',update,{passive:true});
-  if(ps)ps.addEventListener('scroll',update,{passive:true});
-  update();
 })();
 
 (function(){
@@ -1069,9 +1093,14 @@ body.doc-lock .page-scroll{overflow:hidden}
   function flip(s){
     s.digit=!s.digit;
     s.el.textContent=s.digit?String(digits[s.idx]):'•';
+    /* перезапуск CSS-анимации без чтения offsetWidth: такое чтение
+       принудительно пересчитывает раскладку документа и роняет кадр —
+       вместо этого снимаем и ставим класс через границу кадра
+       (двойной requestAnimationFrame), анимация перезапускается так же */
     s.el.classList.remove('flip');
-    void s.el.offsetWidth;
-    s.el.classList.add('flip');
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){s.el.classList.add('flip')});
+    });
   }
   var first=true;
   function tick(){
@@ -1087,6 +1116,19 @@ body.doc-lock .page-scroll{overflow:hidden}
     setTimeout(tick,260+Math.random()*360);
   }
   setTimeout(tick,1000);
+})();
+
+(function(){
+  /* бегущее кольцо тарифа: анимация зарегистрированного свойства --a
+     считается в главном потоке (пересчёт стиля + перерисовка градиента
+     каждый кадр). Вне поля зрения приостанавливаем её атрибутом
+     data-off (см. CSS), чтобы не тратить бюджет кадра впустую */
+  var plan=document.querySelector('.plan-hot');
+  if(!plan||!('IntersectionObserver' in window))return;
+  new IntersectionObserver(function(items){
+    items[0].isIntersecting?plan.removeAttribute('data-off')
+                           :plan.setAttribute('data-off','');
+  }).observe(plan);
 })();
 
 (function(){
