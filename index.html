@@ -6,6 +6,8 @@
 <title>Виртуальная карта Mastercard за сутки — @WolfBasil</title>
 <meta name="description" content="Оформление личной виртуальной карты Mastercard с Google Pay и Samsung Pay в течение суток. Бесплатное обслуживание, именная, без VPN.">
 <meta name="theme-color" content="#0B0C0E">
+<!-- Coinso: подтверждение владения сайтом для подключения приёма платежей, не удалять -->
+<meta name="cryptoproc-verify" content="cp_6a8f9d2c4e5b">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23C9F26F'/%3E%3Cpath fill='%23161A07' d='M6 3.5 13 9h6l7-5.5-1.7 8.6 2.2 4.6L16 29 5.5 16.7l2.2-4.6Z'/%3E%3C/svg%3E">
 <meta property="og:title" content="Виртуальная карта Mastercard за сутки — @WolfBasil">
 <meta property="og:description" content="Оформление личной виртуальной карты Mastercard с Google Pay и Samsung Pay в течение суток. Бесплатное обслуживание, именная, без VPN.">
@@ -17,7 +19,11 @@ document.documentElement.classList.add('js');
    браузере — баннер появился снова, как написано в политике.
    При открытии файла напрямую (file://) браузер не пишет cookie —
    там работает дубль в localStorage, иначе сайт не помнил бы выбор вообще */
-function wbGet(n){var m=document.cookie.match(new RegExp('(?:^|; )'+n+'=([^;]*)'));if(m)return decodeURIComponent(m[1]);
+function wbGet(n){var m;
+  /* в песочнице встроенного предпросмотра чтение document.cookie бросает
+     SecurityError — глушим, чтобы не уронить скрипты ниже по файлу */
+  try{m=document.cookie.match(new RegExp('(?:^|; )'+n+'=([^;]*)'))}catch(e){}
+  if(m)return decodeURIComponent(m[1]);
   if(location.protocol==='file:'){try{return localStorage.getItem(n)}catch(e){}}return null}
 function wbSet(n,v){var e=new Date(Date.now()+365*864e5);
   try{document.cookie=n+'='+encodeURIComponent(v)+'; expires='+e.toUTCString()+'; path=/; SameSite=Lax'}catch(e){}
@@ -1166,6 +1172,13 @@ body.doc-lock .page-scroll{overflow:hidden}
   if(!banner)return;
   var saved=wbGet(KEY);
   if(saved==='all'||saved==='min')return;
+  /* если ни cookie, ни localStorage недоступны (iframe-предпросмотр без
+     полномочий), согласение негде сохранить, а трекинговых cookie сайт
+     не ставит — баннер не показываем, чтобы не перекрывать страницу */
+  var ok=false;
+  try{document.cookie;ok=true}catch(e){}
+  if(!ok){try{localStorage.getItem(KEY);ok=true}catch(e){}}
+  if(!ok)return;
   setTimeout(function(){banner.classList.add('show')},700);
   function set(v){
     wbSet(KEY,v);
@@ -1203,7 +1216,16 @@ body.doc-lock .page-scroll{overflow:hidden}
     if(m)close(m);
   });
   /* прямые ссылки на документы: #terms, #privacy, #cookies открывают
-     окно при загрузке — удобно передавать ссылку модерации платёжного сервиса */
+     окно при загрузке — удобно передавать ссылку модерации платёжного сервиса;
+     hashchange — если ссылку открыли без перезагрузки страницы */
+  function byHash(){
+    var h=(location.hash||'').replace('#','');
+    if(h==='terms'||h==='privacy'||h==='cookies'){
+      var m=document.getElementById('doc-'+h);
+      if(m)open(m);
+    }
+  }
+  window.addEventListener('hashchange',byHash);
   var dh=(location.hash||'').replace('#','');
   if(dh==='terms'||dh==='privacy'||dh==='cookies'){
     var dm=document.getElementById('doc-'+dh);
