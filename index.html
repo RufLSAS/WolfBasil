@@ -604,7 +604,11 @@ html[data-theme="light"] .modal-box{box-shadow:0 30px 80px rgba(64,58,32,.28)}
 @media (min-width:881px){
   html,body{height:100%}
   body{overflow:hidden;display:flex;flex-direction:column}
-  .page-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
+  .page-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+    /* glide-модуль пишет scrollTop каждый кадр: наследуемый от html
+       scroll-behavior:smooth превратил бы каждую присваивку в анимацию
+       (заметно в Firefox) — контейнеру нужен явный auto */
+    scroll-behavior:auto}
   section[id]{scroll-margin-top:14px} /* шапка вне контейнера прокрутки */
 }
 /* открытое модальное окно блокирует и контейнер прокрутки */
@@ -1187,7 +1191,9 @@ body.doc-lock .page-scroll{overflow:hidden}
 
 (function(){
   /* якорные ссылки (#features, #price и т.д.): плавный скролл к секции
-     без перезагрузки страницы; «href="#"» (логотип) — без перехода */
+     без перезагрузки страницы; «href="#"» (логотип) — наверх. На широком
+     окне перелёт идёт через общий glide-модуль (определён в конце скрипта),
+     в остальных случаях — нативный scrollIntoView */
   var calm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)');
   document.addEventListener('click',function(e){
     var a=e.target.closest?e.target.closest('a[href^="#"]'):null;
@@ -1195,14 +1201,21 @@ body.doc-lock .page-scroll{overflow:hidden}
     e.preventDefault();
     var id=a.getAttribute('href').slice(1);
     var behavior=calm&&calm.matches?'auto':'smooth';
+    var ps=document.querySelector('.page-scroll');
     if(!id){
-      var ps=document.querySelector('.page-scroll');
+      if(window.wbGlideTo&&window.wbGlideTo(0,600))return;
       ps=(ps&&ps.scrollHeight>ps.clientHeight)?ps:window;
       ps.scrollTo({top:0,behavior:behavior});
       return;
     }
     var el=document.getElementById(id);
     if(!el)return;
+    if(window.wbGlideTo&&ps){
+      /* цель — верх секции в координатах контейнера минус scroll-margin-top */
+      var m=parseFloat(getComputedStyle(el).scrollMarginTop)||0;
+      var top=el.getBoundingClientRect().top-ps.getBoundingClientRect().top+ps.scrollTop-m;
+      if(window.wbGlideTo(top,650))return;
+    }
     el.scrollIntoView({behavior:behavior,block:'start'});
   });
 })();
@@ -1276,32 +1289,122 @@ body.doc-lock .page-scroll{overflow:hidden}
 })();
 
 (function(){
-  /* на десктопе прокрутка живёт в .page-scroll: колесо над шапкой
-     (она вне контейнера) и клавиши Space/PgUp/PgDn/Home/End при фокусе
-     вне полей прокручивают страницу, как при обычной прокрутке окна */
+  /* плавная прокрутка страницы (glide): события колеса двигают цель,
+     а реальный scrollTop догоняет её каждый кадром экспоненциальным
+     сближением — скорость вращения колеса переходит в инерцию и затухает
+     плавно, без ступенек по 100px и без резкой остановки. Дальние прыжки
+     (якоря, Home/End) идут с ограничением скорости и мягкой посадкой,
+     средняя кнопка остаётся на нативной автораскрутке. Тач-ввод,
+     prefers-reduced-motion, вложенные области прокрутки и открытые
+     модалки оставляются нативной прокрутке */
   var ps=document.querySelector('.page-scroll');
   var head=document.querySelector('.head');
-  if(!ps||!head)return;
-  function active(){return ps.scrollHeight>ps.clientHeight}
-  head.addEventListener('wheel',function(e){
-    if(!active())return;
-    ps.scrollTop+=e.deltaY;
+  if(!ps)return;
+  var F=0.115,        /* доля оставшегося пути за кадр при 60fps */
+      VMAX=5200;      /* предел скорости при прокрутке колесом, px/с */
+  var calm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)');
+  var touch=window.matchMedia&&window.matchMedia('(pointer:coarse)').matches;
+  ps.addEventListener('touchstart',function(){touch=true},{once:true,passive:true});
+  var target=null,cur=0,raf=0,last=0,capS=VMAX;
+
+  function calmNow(){return calm&&calm.matches}
+  function active(){return ps.scrollHeight-ps.clientHeight>2}
+  function maxTop(){return ps.scrollHeight-ps.clientHeight}
+  function begin(){
+    if(target===null){cur=ps.scrollTop;target=cur;capS=VMAX}
+  }
+  function wake(){if(!raf){last=0;raf=requestAnimationFrame(frame)}}
+  function stop(){if(raf){cancelAnimationFrame(raf);raf=0}target=null}
+
+  function frame(now){
+    var dt=last?(now-last)/1000:0.0167;
+    last=now;
+    if(dt<=0||dt>0.25){raf=requestAnimationFrame(frame);return}
+    if(target===null){stop();return}
+    var real=ps.scrollTop;
+    /* позицию изменили без нас (ползунок скроллбара, find-in-page,
+       автораскрытие): отдаём управление и останавливаемся */
+    if(Math.abs(real-cur)>1.5){stop();return}
+    var max=maxTop();
+    if(max<=2){stop();return}
+    if(target>max)target=max;else if(target<0)target=0;
+    if(cur>max)cur=max;else if(cur<0)cur=0;
+    var dist=target-cur,
+        k=1-Math.pow(1-F,dt*60),
+        cap=capS*dt;
+    var move=Math.abs(dist)*k;
+    if(move>cap)move=cap;
+    /* браузер округляет scrollTop до целых пикселей, поэтому позицию
+       ведём в собственном float-счётчике, а в финале дописываем точное
+       значение цели — иначе последние пиксели залипают */
+    cur+=dist>0?move:-move;
+    if(Math.abs(target-cur)<0.5){ps.scrollTop=target;stop();return}
+    ps.scrollTop=cur;
+    raf=requestAnimationFrame(frame);
+  }
+
+  function glideTo(top){
+    if(calmNow()||touch||!active())return false;
+    begin();
+    target=Math.max(0,Math.min(maxTop(),top));
+    /* дальний прыжок быстрее: не длиннее ~1.1с крейсерской скорости */
+    capS=Math.max(VMAX,Math.abs(target-cur)/1.1);
+    wake();
+    return true;
+  }
+  window.wbGlideTo=glideTo;
+
+  function wheel(e){
+    if(!active()||e.ctrlKey||e.deltaX)return;
+    if(document.body.classList.contains('doc-lock'))return;
+    var dy=e.deltaY;
+    if(e.deltaMode===1)dy*=33;
+    else if(e.deltaMode===2)dy*=ps.clientHeight;
+    if(calmNow()||touch){
+      /* нативная прокрутка; но над шапкой (вне контейнера) колесо
+         до контента не доходит — пересылаем вручную, мгновенно */
+      if(dy&&head&&head.contains(e.target)){
+        ps.scrollTop+=dy;
+        e.preventDefault();
+      }
+      return;
+    }
     e.preventDefault();
-  },{passive:false});
+    if(!dy||Math.abs(dy)<0.6)return;
+    begin();
+    target+=dy;
+    wake();
+  }
+  ps.addEventListener('wheel',wheel,{passive:false});
+  if(head)head.addEventListener('wheel',wheel,{passive:false});
+
+  /* клавиши Space/PgUp/PgDn/Home/End при фокусе вне полей — как раньше,
+     но перелёт плавный; при calm/touch — мгновенно, как нативно */
   document.addEventListener('keydown',function(e){
-    if(!active())return;
+    if(e.ctrlKey||e.metaKey||e.altKey)return;
     var t=e.target;
     if(t!==document.body&&t!==document.documentElement)return;
+    if(document.body.classList.contains('doc-lock'))return;
     var c=e.code;
     if(c!=='Space'&&c!=='PageUp'&&c!=='PageDown'&&c!=='Home'&&c!=='End')return;
+    if(!active())return;
     e.preventDefault();
     var h=ps.clientHeight*0.9;
-    if(c==='Space')ps.scrollBy(0,e.shiftKey?-h:h);
-    else if(c==='PageUp')ps.scrollBy(0,-h);
-    else if(c==='PageDown')ps.scrollBy(0,h);
-    else if(c==='Home')ps.scrollTop=0;
-    else ps.scrollTop=ps.scrollHeight;
+    if(c==='Space'){if(!glideTo(ps.scrollTop+(e.shiftKey?-h:h)))ps.scrollBy(0,e.shiftKey?-h:h)}
+    else if(c==='PageUp'){if(!glideTo(ps.scrollTop-h))ps.scrollBy(0,-h)}
+    else if(c==='PageDown'){if(!glideTo(ps.scrollTop+h))ps.scrollBy(0,h)}
+    else if(c==='Home'){if(!glideTo(0))ps.scrollTop=0}
+    else{if(!glideTo(ps.scrollHeight))ps.scrollTop=ps.scrollHeight}
   });
+
+  /* открытое модальное окно останавливает glide */
+  new MutationObserver(function(){
+    if(document.querySelector('.modal.open'))stop();
+  }).observe(document.body,{attributes:true,attributeFilter:['class']});
+  /* включение prefers-reduced-motion на лету глушит glide */
+  if(calm&&calm.addEventListener){
+    calm.addEventListener('change',function(){if(calm.matches)stop()});
+  }
 })();
 </script>
 
