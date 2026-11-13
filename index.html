@@ -473,25 +473,45 @@ html.js .feat-grid.gr-ready,html.js .steps.gr-ready{animation:grin .22s ease bot
 .foot-docs button:hover{color:var(--text);text-decoration-color:var(--accent-text)}
 
 /* ---------- модальные окна документов ---------- */
-.modal{position:fixed;inset:0;z-index:100;display:none}
-.modal.open{display:block}
+.modal{position:fixed;inset:0;z-index:100;visibility:hidden;pointer-events:none;
+  transition:visibility 0s .3s}
+.modal.open{visibility:visible;pointer-events:auto;transition:visibility 0s}
 .modal-back{position:absolute;inset:0;background:rgba(8,9,11,.62);backdrop-filter:blur(3px);
-  -webkit-backdrop-filter:blur(3px)}
+  -webkit-backdrop-filter:blur(3px);opacity:0;transition:opacity .3s ease}
+.modal.open .modal-back{opacity:1}
 .modal-box{position:relative;margin:5vh auto 4vh;width:min(720px,calc(100% - 32px));max-height:91vh;
-  overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;
-  padding:30px 32px 34px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
-.modal-x{position:sticky;top:0;float:right;margin:-4px -4px 0 0;width:34px;height:34px;border-radius:10px;
+  display:flex;flex-direction:column;overflow:hidden;background:var(--panel);border:1px solid var(--line);
+  border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,.45);
+  opacity:0;transform:translateY(18px) scale(.985);
+  transition:opacity .3s ease,transform .3s cubic-bezier(.22,.61,.25,1)}
+.modal.open .modal-box{opacity:1;transform:none}
+.modal-x{position:absolute;top:20px;right:20px;width:34px;height:34px;border-radius:10px;
   border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;display:flex;
   align-items:center;justify-content:center;transition:color .2s,border-color .2s;z-index:2}
 .modal-x:hover{color:var(--text);border-color:var(--accent-text)}
 .modal-x svg{width:14px;height:14px;stroke:currentColor;stroke-width:2;stroke-linecap:round}
-.modal-box h3{font-size:22px;font-weight:800;letter-spacing:-.01em;margin:0 0 4px;padding-right:40px}
-.modal-date{font-size:12.5px;color:var(--muted);margin-bottom:18px}
+.modal-box h3{font-size:22px;font-weight:800;letter-spacing:-.01em;margin:0 0 4px;
+  padding:26px 44px 0 32px}
+.modal-date{font-size:12.5px;color:var(--muted);margin:0 32px 18px;padding-bottom:16px;
+  border-bottom:1px solid var(--line)}
+.modal-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  padding:32px 32px 32px; /* верх и низ — как боковые отступы */}
 .modal-body h4{font-size:15.5px;font-weight:700;margin:20px 0 8px}
+.modal-body h4:first-child{margin-top:0}
 .modal-body p{font-size:14px;line-height:1.66;margin:0 0 10px}
 .modal-body ul{margin:0 0 12px;padding-left:20px;list-style:disc;display:grid;gap:5px}
 .modal-body li{font-size:14px;line-height:1.6}
 .modal-body li::marker{color:var(--accent-text)}
+/* скроллбар в тон сайту: виден только ползунок, трек сливается с панелью */
+.modal-body::-webkit-scrollbar{width:14px}
+.modal-body::-webkit-scrollbar-button{display:none;width:0;height:0}
+.modal-body::-webkit-scrollbar-track{background:var(--panel)}
+.modal-body::-webkit-scrollbar-thumb{background-color:var(--sb-thumb);border-radius:8px;
+  border:4px solid transparent;background-clip:padding-box}
+.modal-body::-webkit-scrollbar-thumb:hover{background-color:var(--sb-thumb-hov)}
+@supports not selector(::-webkit-scrollbar){
+  .modal-body{scrollbar-color:var(--sb-thumb) var(--panel);scrollbar-width:thin}
+}
 body.doc-lock{overflow:hidden}
 
 html[data-theme="light"] .ck-box{box-shadow:0 18px 54px rgba(64,58,32,.20)}
@@ -551,7 +571,11 @@ html[data-theme="light"] .modal-box{box-shadow:0 30px 80px rgba(64,58,32,.28)}
   .ck-box{padding:16px 16px 14px}
   .ck-actions{gap:8px}
   .ck-btn{flex:1 1 auto;justify-content:center;text-align:center}
-  .modal-box{padding:22px 18px 26px;margin:3vh auto 3vh;max-height:94vh}
+  .modal-box{margin:3vh auto 3vh;max-height:94vh}
+  .modal-box h3{padding:20px 44px 0 18px}
+  .modal-date{margin:0 18px 14px;padding-bottom:12px}
+  .modal-x{top:16px;right:14px}
+  .modal-body{padding:18px}
 }
 
 /* ---------- доступность ---------- */
@@ -843,7 +867,7 @@ body.doc-lock .page-scroll{overflow:hidden}
   <div class="ck-box">
     <p class="ck-text">Мы используем файлы cookie: необходимые — для работы сайта (запоминание темы оформления), необязательные — для анализа посещаемости и улучшения сервиса. Подробнее в <button type="button" class="doc-link" data-doc="terms">Пользовательском соглашении</button>, <button type="button" class="doc-link" data-doc="privacy">Политике конфиденциальности</button> и <button type="button" class="doc-link" data-doc="cookies">Политике cookie</button>.</p>
     <div class="ck-actions">
-      <button type="button" class="ck-btn ck-min">Только необязательные</button>
+      <button type="button" class="ck-btn ck-min">Только необходимые</button>
       <button type="button" class="ck-btn ck-all">Принять все</button>
     </div>
   </div>
@@ -932,7 +956,7 @@ body.doc-lock .page-scroll{overflow:hidden}
       <h4>3. Необязательные cookie</h4>
       <p>Могут использоваться в будущем для обезличенного анализа посещаемости (какие разделы читают, откуда приходят посетители). Такие данные не позволяют установить личность и используются только в агрегированном виде для улучшения сайта.</p>
       <h4>4. Управление согласием</h4>
-      <p>При первом визите сайт показывает баннер с выбором: «Принять все» — разрешаете и необязательные cookie; «Только необязательные» — устанавливаются только необходимые файлы. Свой выбор можно изменить в любой момент: очистите файлы cookie этого сайта в настройках браузера — баннер появится снова. Также cookie можно полностью запретить в настройках браузера. Если страница открыта напрямую как локальный файл (без сайта), выбор запоминается в локальном хранилище браузера вместо cookie.</p>
+      <p>При первом визите сайт показывает баннер с выбором: «Принять все» — разрешаете и необязательные cookie; «Только необходимые» — устанавливаются только необходимые файлы, необязательные не используются. Свой выбор можно изменить в любой момент: очистите файлы cookie этого сайта в настройках браузера — баннер появится снова. Также cookie можно полностью запретить в настройках браузера. Если страница открыта напрямую как локальный файл (без сайта), выбор запоминается в локальном хранилище браузера вместо cookie.</p>
       <h4>5. Контакты</h4>
       <p>Вопросы по политике cookie — в Telegram: t.me/WolfBasil или на электронную почту: heading-unzip-spud@duck.com.</p>
     </div>
@@ -1095,8 +1119,15 @@ body.doc-lock .page-scroll{overflow:hidden}
     var s=document.querySelector('.steps');
     if(s)fit(s,['4','2','1'],'.step h3');
   }
-  var t;
-  function run(){clearTimeout(t);t=setTimeout(layout,120)}
+  var t,lastW=window.innerWidth;
+  function run(){
+    /* высота окна на телефоне меняется при показе/скрытии адресной
+       строки — раскладке это безразлично, пересчитываем только при
+       реальном изменении ширины (поворот, изменение окна на десктопе) */
+    if(window.innerWidth===lastW)return;
+    lastW=window.innerWidth;
+    clearTimeout(t);t=setTimeout(layout,120);
+  }
   window.addEventListener('resize',run);
   function settle(){
     layout();
