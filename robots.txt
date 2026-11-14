@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ruflsas.github.io/WolfBasil/sitemap.xml
